@@ -1,26 +1,70 @@
+/*
+client.go
+code derived from fenriquez1
+
+implements the following in
+
+STEPS
+1) socket establishment, 
+2) case/switch for packet type/condition, 
+3) buffer array check for one password, 
+4) send file (handle little/bigEndian)
+5) terminate connection/hash file
+*/
+
 package main
 
 import (
-	"crypto/sha1"
-	"encoding/binary"
+	// Packages listed are in alphabetical order
+	// -----------------------------------------
+	
+	// Package sha1 implements the SHA-1 hash algorithm
+	"crypto/sha1" 
+	
+	// Package binary implements simple translation between numbers and byte sequences 
+	// and encoding and decoding of varints.
+	// Will find Little/BigEndian to handle byteOrder
+	"encoding/binary" 
+	
+	// Package fmt implements formatted I/O with functions analogous to C's printf and scanf.
 	"fmt"
+	
+	// Package ioutil implements some I/O utility functions
+	// Will find ReadFile reads the file named by filename and returns the contents
 	"io/ioutil"
+	
+	// Package net provides a portable interface for network I/O, including TCP/IP, UDP, 
+	// domain name resolution, and Unix domain sockets
 	"net"
+	
+	// Package os provides a platform-independent interface to operating system functionality
 	"os"
+	
+	// Package strconv implements conversions to and from string representations of basic data types
 	"strconv"
 )
 
+// Let's define the Functional Specification and Packet Formats
 const (
-	JoinReq     uint16 = 1
-	PassReq     uint16 = 2
-	PassResp    uint16 = 3
-	PassAccept  uint16 = 4
-	Data        uint16 = 5
-	Terminate   uint16 = 6
-	Reject      uint16 = 7
-	HdrSize     int    = 2
-	PyldLenSize int    = 4
-	PackIdSize  int    = 4
+	
+	// Functional Specifications
+	// -------------------------
+	// Packet Types are 2-bytes (uint16 / 16-bit integers w/ Range: 0 through 65535.
+	joinReq     uint16 = 1
+	passReq     uint16 = 2
+	passResp    uint16 = 3
+	passAccept  uint16 = 4
+	data        uint16 = 5
+	terminate   uint16 = 6
+	reject      uint16 = 7
+	
+	// Packet format where int is >= 32-bit (4-bytes)
+	// all packets have 2-byte (packet type) + 4-byte (payload length)
+	// password length <= 50-bytes
+	// terminate length = digest (sha1 = 64-bytes)
+	headerLength	int    = 2
+	payloadLength	int    = 4
+	packetID	int    = 4 //
 )
 
 var (
