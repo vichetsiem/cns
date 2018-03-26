@@ -126,7 +126,7 @@ func sendFile(conn net.PacketConn, serverAddr net.Addr) {
 	for i := int64(0); i < size; {
 		dobj, err := fileObject.Read(dataObject)
 		checkError(err)
-		packetLength := HeaderLength + PayloadLength + PackIdSize + dobj
+		packetLength := HeaderLength + PayloadLength + PacketidLength + dobj
 		packet := make([]byte, packetLength)
 		binary.LittleEndian.PutUint16(packet[0:], DATA)
 		binary.LittleEndian.PutUint32(packet[2:], uint32(dobj))
