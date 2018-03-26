@@ -50,13 +50,13 @@ const (
 	// Functional Specifications
 	// -------------------------
 	// Packet Types are 2-bytes (uint16 / 16-bit integers w/ Range: 0 through 65535.)
-	joinReq     uint16 = 1
-	passReq     uint16 = 2
-	passResp    uint16 = 3
-	passAccept  uint16 = 4
-	data        uint16 = 5
-	terminate   uint16 = 6
-	reject      uint16 = 7
+	JOIN_REQ    uint16 = 1
+	PASS_REQ    uint16 = 2
+	PASS_RESP   uint16 = 3
+	PASS_ACCEPT uint16 = 4
+	DATA        uint16 = 5
+	TERMINATE   uint16 = 6
+	REJECT      uint16 = 7
 	
 	// Packet format where int is >= 32-bit (4-bytes)
 	// all packets have 2-byte (packet type) + 4-byte (payload length)
@@ -64,14 +64,15 @@ const (
 	// TERMINATE length = digest (sha1 = 64-bytes)
 	HeaderLength	uint16    = 2
 	PayloadLength	uint32    = 4
-	Packetid	int    = 4 //
+	PacketidLength	int    = 4 // up to 1000 bytes to handle data
 )
 
 var (
-	nameNPort  []string
-	passwds    []string
-	outfile    string
-	joinReqArr = []byte{0x01, 0x00, 0x00, 0x00, 0x00, 0x00}
+	serverAddress 	string
+	serverPort  	string
+	userPasswords	string
+	outputFile    	string
+	JOIN_REQ_Array = []byte{0x01, 0x00, 0x00, 0x00, 0x00, 0x00} // packet is 6-bytes
 )
 
 func usage() {
@@ -91,8 +92,66 @@ func usage() {
 }
 
 func checkError(err error) {
+	// If there is an error, abort!
 	if err != nil {
 		panic("ABORT")
+	}
+}
+
+func handleConnection(conn net.Conn) {
+	// Client sends a JOIN_REQ
+	conn.Write(JOIN_REQ_Array)
+
+	// Allocate buffer as byte array
+	buffer := make([]byte, 1010)
+	
+	// used to cycle through the three user provided passwords, starting at 0
+	password := 0
+
+	//
+	f, err := os.Create(outfile)
+	defer f.Close()
+	checkError(err)
+
+	// Pull in user input
+	for {
+		n, err := conn.Read(buffer)
+		checkError(err)
+		// handle network byte order
+		headerBytes := binary.LittleEndian.Uint16(buffer[0:])
+
+		switch headerBytes {
+		case PASS_REQ:
+			// Handle server password request
+			passRespLen := HeaderLength + PayloadLength + len(userPasswords[password])
+			pyldLen := uint32(len(userPasswords[password]))
+			response := make([]byte, passRespLen)
+			binary.LittleEndian.PutUint16(response[0:], PassResp)
+			binary.LittleEndian.PutUint32(response[2:], pyldLen)
+			copy(response[6:], []byte(userPasswords[passCheck]))
+			_, err := conn.Write(response)
+			checkError(err)
+			password++
+		case PASS_ACCEPT:
+			// Handle server accepting password
+			// Go to Data case
+		case DATA:
+			// Handle data server sends
+			// pkID := binary.LittleEndian.Uint32(buffer[6:10])
+			data := buffer[10:n]
+			_, err := f.Write(data)
+			checkError(err)
+			f.Sync()
+		case REJECT:
+			fmt.Println("ABORT")
+			return
+		case TERMINATE:
+			verifyDigest(buffer[2:n])
+			return
+		default:
+			fmt.Println("ABORT")
+			return
+		}
 	}
 }
 
@@ -104,7 +163,7 @@ func verifyDigest(pk []byte) {
 		return
 	}
 
-	data, err := ioutil.ReadFile(outfile)
+	data, err := ioutil.ReadFile(outputFile)
 	checkError(err)
 
 	digest := sha1.Sum(data)
@@ -124,55 +183,6 @@ func verifyDigest(pk []byte) {
 	fmt.Println("OK")
 }
 
-func handleConnection(conn net.Conn) {
-	// Send Join Request
-	conn.Write(joinReqArr)
-
-	buff := make([]byte, 1010)
-
-	passCount := 0
-
-	f, err := os.Create(outfile)
-	defer f.Close()
-	checkError(err)
-
-	// Read responses
-	for {
-		n, err := conn.Read(buff)
-		checkError(err)
-		header := binary.LittleEndian.Uint16(buff[0:])
-
-		switch header {
-		case PassReq:
-			passRespLen := HdrSize + PyldLenSize + len(passwds[passCount])
-			pyldLen := uint32(len(passwds[passCount]))
-			response := make([]byte, passRespLen)
-			binary.LittleEndian.PutUint16(response[0:], PassResp)
-			binary.LittleEndian.PutUint32(response[2:], pyldLen)
-			copy(response[6:], []byte(passwds[passCount]))
-			_, err := conn.Write(response)
-			checkError(err)
-			passCount++
-		case PassAccept:
-			//TODO Not sure if there is an action to take here
-		case Data:
-			// pkID := binary.LittleEndian.Uint32(buff[6:10])
-			data := buff[10:n]
-			_, err := f.Write(data)
-			checkError(err)
-			f.Sync()
-		case Reject:
-			fmt.Println("ABORT")
-			return
-		case Terminate:
-			verifyDigest(buff[2:n])
-			return
-		default:
-			fmt.Println("ABORT")
-			return
-		}
-	}
-}
 
 func main() {
 	// Define the arguments to be parsed by program w/o using flags
@@ -187,21 +197,27 @@ func main() {
 		return
 	}
 
-	// Parse command line args
-	ipAddessAndPort = args[1:3] //
-	passwds = args[3:6]
-	outfile = args[6]
+	// Parse command line argument strings (args)
+	serverAddess = args[1] // <server name>
+	serverPort = args[2] // <server port>
+	userPasswords = args[3:6] // <clientpwd1><clientpwd2><clientpwd3>
+	outputFile = args[6] // <output file>
 
-	_, err := strconv.Atoi(nameNPort[1])
+	// Convert string (serverPort) to integer
+	_, err := strconv.Atoi(serverPort)
 	if err != nil {
+		// if there is no error, print to screen expected command arguments
 		usage()
 		return
 	}
 
 	// Connect to server
-	hostPort := nameNPort[0] + ":" + nameNPort[1]
-	conn, err := net.Dial("udp4", hostPort)
-	defer conn.Close()
+	hostPort := serverAddress + ":" + serverPort
+	
+	// Dial function is "tcp/udp" "golang.org:80"
+	// establish connection
+	conn, err := net.Dial("udp", hostPort)
+	defer conn.Close() // defer ensures connection is closed
 	checkError(err)
 
 	handleConnection(conn)
