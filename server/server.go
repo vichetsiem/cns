@@ -73,9 +73,9 @@ const (
 var (
 	serverPassword	string
 	inputFile	string
-	PASS_REQ_Array     = []byte{0x02, 0x00, 0x00, 0x00, 0x00, 0x00}
-	PASS_ACCEPT_Array     = []byte{0x04, 0x00, 0x00, 0x00, 0x00, 0x00}
-	REJECT_Array      = []byte{0x07, 0x00, 0x00, 0x00, 0x00, 0x00}
+	PASS_REQ_Array     	= []byte{0x02, 0x00, 0x00, 0x00, 0x00, 0x00}
+	PASS_ACCEPT_Array  	= []byte{0x04, 0x00, 0x00, 0x00, 0x00, 0x00}
+	REJECT_Array      	= []byte{0x07, 0x00, 0x00, 0x00, 0x00, 0x00}
 )
 
 func usage() {
@@ -96,13 +96,13 @@ func checkError(err error) {
 }
 
 func terminate(conn net.PacketConn, serverAddr net.Addr) {
-	// Get digest and send terminate packet
+	// Get digest and send TERMINATE packet
 	data, err := ioutil.ReadFile(inputFile)
 	checkError(err)
 	digest := sha1.Sum(data)
 
-	packLen := HeaderLength + PayloadLength + sha1.Size
-	packet := make([]byte, packLen)
+	packetLength := HeaderLength + PayloadLength + sha1.Size
+	packet := make([]byte, packetLength)
 	binary.LittleEndian.PutUint16(packet[0:], TERMINATE)
 	binary.LittleEndian.PutUint32(packet[2:], uint32(len(digest)))
 	copy(packet[6:], digest[0:])
@@ -114,33 +114,33 @@ func sendFile(conn net.PacketConn, serverAddr net.Addr) {
 	// Read file from present directory and send
 	// NOTE: file must be in working directory or this will fail
 	fileObject, err := os.Open(inputFile)
-	defer f.Close()
+	defer fileObject.Close()
 	checkError(err)
 
 	inputFileObject, err := fileObject.Stat() // get FileInfo on source file
 	checkError(err)
 
-	dat := make([]byte, 1000)
-	s := inputFileObject.Size()
-	packID := uint32(0)
-	for i := int64(0); i < s; {
-		n, err := f.Read(dat)
+	dataObject := make([]byte, 1000)
+	size := inputFileObject.Size()
+	Packetid := uint32(0)
+	for i := int64(0); i < size; {
+		dobj, err := fileObject.Read(dataObject)
 		checkError(err)
-		packLen := HeaderLength + PayloadLength + PackIdSize + n
-		packet := make([]byte, packLen)
+		packetLength := HeaderLength + PayloadLength + PackIdSize + dobj
+		packet := make([]byte, packetLength)
 		binary.LittleEndian.PutUint16(packet[0:], DATA)
-		binary.LittleEndian.PutUint32(packet[2:], uint32(n))
-		binary.LittleEndian.PutUint32(packet[6:], packID)
-		copy(packet[10:], dat[0:n])
+		binary.LittleEndian.PutUint32(packet[2:], uint32(dobj))
+		binary.LittleEndian.PutUint32(packet[6:], Packetid)
+		copy(packet[10:], dataObject[0:dobj])
 		conn.WriteTo(packet, serverAddr)
-		i += int64(n)
-		packID++
+		i += int64(dobj)
+		Packetid++
 	}
 }
 
 func handlePacketConnection(conn net.PacketConn) {
 
-	reqCount := 0
+	request := 0
 	// Allocate buffer as byte array, where 
 	// (HeaderLength==2) +(PayloadLength==4) +(PacketidLength==4)+ (Data <= 1000) ==1010
 	bufferObject := make([]byte, 1010)
@@ -151,26 +151,26 @@ func handlePacketConnection(conn net.PacketConn) {
 			fmt.Println(err)
 			return
 		}
-		recvd := bufferObject[0:count]
+		frmClient := bufferObject[0:count]
 		header := binary.LittleEndian.Uint16(bufferObject[0:])
 
 		switch header {
 		case JOIN_REQ:
 			conn.WriteTo(PASS_REQ_Array, serverAddress)
-			reqCount++
+			request++
 		case PASS_RESP:
-			tPass := string(recvd[6:])
-			if strings.Compare(tPass, serverPassword) == 0 {
+			clientPassword := string(frmClient[6:])
+			if strings.Compare(clientPassword, serverPassword) == 0 {
 				conn.WriteTo(PASS_REQ_Array, serverAddress)
-				// Password accepted, now send file
+				// Password matches, send file to client
 				sendFile(conn, serverAddress)
-				// Terminate
+				// Terminate connection after completion
 				terminate(conn, serverAddress)
 				return
 			}
-			if reqCount < 3 {
+			if request < 3 {
 				conn.WriteTo(PASS_REQ_Array, serverAddress)
-				reqCount++
+				request++
 			} else {
 				conn.WriteTo(REJECT_Array, serverAddress)
 				fmt.Println("ABORT")
@@ -181,9 +181,7 @@ func handlePacketConnection(conn net.PacketConn) {
 			return
 		}
 		fmt.Printf("Server Address = %s\n", serverAddress)
-		fmt.Printf("Buffer = %#4x\n", recvd)
-	}
-}
+		fmt.Printf("Buffer = %#4x\n", frmClient)
 	}
 }
 
