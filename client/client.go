@@ -49,7 +49,7 @@ const (
 	
 	// Functional Specifications
 	// -------------------------
-	// Packet Types are 2-bytes (uint16 / 16-bit integers w/ Range: 0 through 65535.
+	// Packet Types are 2-bytes (uint16 / 16-bit integers w/ Range: 0 through 65535.)
 	joinReq     uint16 = 1
 	passReq     uint16 = 2
 	passResp    uint16 = 3
@@ -60,11 +60,11 @@ const (
 	
 	// Packet format where int is >= 32-bit (4-bytes)
 	// all packets have 2-byte (packet type) + 4-byte (payload length)
-	// password length <= 50-bytes
-	// terminate length = digest (sha1 = 64-bytes)
-	headerLength	int    = 2
-	payloadLength	int    = 4
-	packetID	int    = 4 //
+	// PASSWORD length <= 50-bytes
+	// TERMINATE length = digest (sha1 = 64-bytes)
+	HeaderLength	uint16    = 2
+	PayloadLength	uint32    = 4
+	Packetid	int    = 4 //
 )
 
 var (
@@ -75,6 +75,17 @@ var (
 )
 
 func usage() {
+	// Presents User input format for argument function
+	// text within "< >" are considered arguments
+	// agr[0] = client
+	// agr[1] = server name
+	// agr[2] = server port
+	// agr[3] = clientpwd1
+	// agr[4] = clientpwd2
+	// agr[5] = clientpwd3
+	// agr[6] = output file (creates file with name "output file" from 
+	//	file received from server program
+	
 	fmt.Printf("Usage: ./client <server name> <server port> <clientpwd1>" +
 		"<clientpwd2> <clientpwd3> <output file>\n")
 }
@@ -164,14 +175,20 @@ func handleConnection(conn net.Conn) {
 }
 
 func main() {
+	// Define the arguments to be parsed by program w/o using flags
+	// Flags could be "./client -what -do -you -want", 
+	// instead, we'll skip arg[0] which would return "client"
+	//
+	// See example: https://gobyexample.com/command-line-arguments
+	//
 	args := os.Args
 	if len(args) != 7 {
-		usage()
+		usage() // parses argument from User input
 		return
 	}
 
 	// Parse command line args
-	nameNPort = args[1:3]
+	ipAddessAndPort = args[1:3] //
 	passwds = args[3:6]
 	outfile = args[6]
 
