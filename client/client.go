@@ -62,15 +62,14 @@ const (
 	// all packets have 2-byte (packet type) + 4-byte (payload length)
 	// PASSWORD length <= 50-bytes
 	// TERMINATE length = digest (sha1 = 64-bytes)
-	HeaderLength	uint16    = 2
-	PayloadLength	uint32    = 4
+	HeaderLength	int    = 2 // couldn't use unit16
+	PayloadLength	int    = 4 // if this was uint32, can't perform add operand
 	PacketidLength	int    = 4 // up to 1000 bytes to handle data
 )
 
 var (
-	serverAddress 	string
-	serverPort  	string
-	userPasswords	string
+	server  		[]string
+	userPasswords	[]string
 	outputFile    	string
 	JOIN_REQ_Array = []byte{0x01, 0x00, 0x00, 0x00, 0x00, 0x00} // packet is 6-bytes
 )
@@ -103,7 +102,7 @@ func handleConnection(conn net.Conn) {
 	conn.Write(JOIN_REQ_Array)
 
 	// Allocate buffer as byte array, where 
-	// (HeaderLength==2) +(PayloadLength==4) +(PacketidLength==4)+ (Data <= 1000) ==1010
+	// (Header=2)+(Payload=4)+(Packetid=4)+(Data <= 1000) ==1010
 	bufferObject := make([]byte, 1010)
 	
 	// used to cycle through the three user provided passwords, starting at 0
@@ -136,7 +135,7 @@ func handleConnection(conn net.Conn) {
 		case PASS_ACCEPT:
 			// Handle server accepting password
 			// Go to DATA
-			fallthrough
+			// falthrough does not work
 		case DATA:
 			// Handle data server sends
 			// Packetid := binary.LittleEndian.Uint32(bufferObject[6:10])
@@ -148,7 +147,7 @@ func handleConnection(conn net.Conn) {
 			fmt.Println("ABORT")
 			return
 		case TERMINATE:
-			checkDigest(bufferObject[6:inputLength]) // hash starts at Byte 7
+			checkDigest(bufferObject[2:inputLength]) // hash starts at Byte 7
 			return
 		default:
 			fmt.Println("ABORT")
@@ -160,7 +159,8 @@ func handleConnection(conn net.Conn) {
 func checkDigest(packet []byte) {
 	// Check the hash of the file, print "OK" or "ABORT"
 	totalPayloadLength := binary.LittleEndian.Uint32(packet[0:])
-	serverDigest := packet[0:] // This is 0 because digest starts offset at Byte 7
+	serverDigest := packet[4:] 
+	// This is 0 because digest starts offset at Byte 7
 	if int(totalPayloadLength) != len(serverDigest) {
 		fmt.Println("ABORT")
 		return
@@ -176,7 +176,7 @@ func checkDigest(packet []byte) {
 		fmt.Println("ABORT")
 		return
 	}
-	
+
 	for i := 0; i < len(digest); i++ {
 		if serverDigest[i] != digest[i] {
 			fmt.Println("ABORT")
@@ -200,13 +200,12 @@ func main() {
 	}
 
 	// Parse command line argument strings (args)
-	serverAddess = args[1] // <server name>
-	serverPort = args[2] // <server port>
-	userPasswords = args[3:6] // <clientpwd1><clientpwd2><clientpwd3>
-	outputFile = args[6] // <output file>
+	server = args[1:3] 			// <server name> <server port>
+	userPasswords = args[3:6] 	// <clientpwd1><clientpwd2><clientpwd3>
+	outputFile = args[6] 		// <output file>
 
-	// Convert string (serverPort) to integer
-	_, err := strconv.Atoi(serverPort)
+	// Convert string (server[1]) to integer
+	_, err := strconv.Atoi(server[1])
 	if err != nil {
 		// if there is no error, print to screen expected command arguments
 		usage()
@@ -214,7 +213,7 @@ func main() {
 	}
 
 	// Connect to server
-	hostPort := serverAddress + ":" + serverPort
+	hostPort := server[0] + ":" + server[1]
 	
 	// Dial function is "tcp/udp" "golang.org:80"
 	// establish connection
