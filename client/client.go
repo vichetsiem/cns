@@ -169,20 +169,20 @@ func checkDigest(packet []byte) {
 	data, err := ioutil.ReadFile(outputFile)
 	checkError(err)
 
+	// Perform hash on data
 	digest := sha1.Sum(data)
 
 	if len(serverDigest) != len(digest) {
 		fmt.Println("ABORT")
 		return
 	}
-
+	
 	for i := 0; i < len(digest); i++ {
 		if serverDigest[i] != digest[i] {
 			fmt.Println("ABORT")
 			return
 		}
 	}
-
 	fmt.Println("OK")
 }
 
