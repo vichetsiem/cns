@@ -102,51 +102,53 @@ func handleConnection(conn net.Conn) {
 	// Client sends a JOIN_REQ
 	conn.Write(JOIN_REQ_Array)
 
-	// Allocate buffer as byte array
-	buffer := make([]byte, 1010)
+	// Allocate buffer as byte array, where 
+	// (HeaderLength==2) +(PayloadLength==4) +(PacketidLength==4)+ (Data <= 1000) ==1010
+	bufferObject := make([]byte, 1010)
 	
 	// used to cycle through the three user provided passwords, starting at 0
 	password := 0
 
-	//
-	f, err := os.Create(outfile)
-	defer f.Close()
+	// Create file 
+	fileObject, err := os.Create(outputFile)
+	defer fileObject.Close() // Close Create function
 	checkError(err)
 
 	// Pull in user input
 	for {
-		n, err := conn.Read(buffer)
+		inputLength, err := conn.Read(bufferObject)
 		checkError(err)
 		// handle network byte order
-		headerBytes := binary.LittleEndian.Uint16(buffer[0:])
+		headerBytes := binary.LittleEndian.Uint16(bufferObject[0:])
 
 		switch headerBytes {
 		case PASS_REQ:
 			// Handle server password request
-			passRespLen := HeaderLength + PayloadLength + len(userPasswords[password])
-			pyldLen := uint32(len(userPasswords[password]))
-			response := make([]byte, passRespLen)
-			binary.LittleEndian.PutUint16(response[0:], PassResp)
-			binary.LittleEndian.PutUint32(response[2:], pyldLen)
-			copy(response[6:], []byte(userPasswords[passCheck]))
-			_, err := conn.Write(response)
+			passRespObject := HeaderLength + PayloadLength + len(userPasswords[password])
+			totalPayloadLength := uint32(len(userPasswords[password]))
+			userInput := make([]byte, passRespObject)
+			binary.LittleEndian.PutUint16(userInput[0:], PASS_RESP)  // 0 - 5 Bytes
+			binary.LittleEndian.PutUint32(userInput[2:], totalPayloadLength) // 
+			copy(userInput[6:], []byte(userPasswords[password]))
+			_, err := conn.Write(userInput)
 			checkError(err)
 			password++
 		case PASS_ACCEPT:
 			// Handle server accepting password
-			// Go to Data case
+			// Go to DATA
+			fallthrough
 		case DATA:
 			// Handle data server sends
-			// pkID := binary.LittleEndian.Uint32(buffer[6:10])
-			data := buffer[10:n]
-			_, err := f.Write(data)
+			// Packetid := binary.LittleEndian.Uint32(bufferObject[6:10])
+			data := bufferObject[10:inputLength] // Data starts at Byte 11
+			_, err := fileObject.Write(data)
 			checkError(err)
-			f.Sync()
+			fileObject.Sync() // Sync flushes writes to stable storage
 		case REJECT:
 			fmt.Println("ABORT")
 			return
 		case TERMINATE:
-			verifyDigest(buffer[2:n])
+			checkDigest(bufferObject[6:inputLength]) // hash starts at Byte 7
 			return
 		default:
 			fmt.Println("ABORT")
@@ -155,10 +157,11 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-func verifyDigest(pk []byte) {
-	pyldLen := binary.LittleEndian.Uint32(pk[0:])
-	recvDigest := pk[4:]
-	if int(pyldLen) != len(recvDigest) {
+func checkDigest(packet []byte) {
+	// Check the hash of the file, print "OK" or "ABORT"
+	totalPayloadLength := binary.LittleEndian.Uint32(packet[0:])
+	serverDigest := packet[0:] // This is 0 because digest starts offset at Byte 7
+	if int(totalPayloadLength) != len(serverDigest) {
 		fmt.Println("ABORT")
 		return
 	}
@@ -168,13 +171,13 @@ func verifyDigest(pk []byte) {
 
 	digest := sha1.Sum(data)
 
-	if len(recvDigest) != len(digest) {
+	if len(serverDigest) != len(digest) {
 		fmt.Println("ABORT")
 		return
 	}
 
 	for i := 0; i < len(digest); i++ {
-		if recvDigest[i] != digest[i] {
+		if serverDigest[i] != digest[i] {
 			fmt.Println("ABORT")
 			return
 		}
@@ -182,7 +185,6 @@ func verifyDigest(pk []byte) {
 
 	fmt.Println("OK")
 }
-
 
 func main() {
 	// Define the arguments to be parsed by program w/o using flags
