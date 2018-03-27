@@ -68,7 +68,7 @@ const (
 )
 
 var (
-	server  		[]string
+	server  	[]string
 	userPasswords	[]string
 	outputFile    	string
 	JOIN_REQ_Array = []byte{0x01, 0x00, 0x00, 0x00, 0x00, 0x00} // packet is 6-bytes
@@ -86,8 +86,7 @@ func usage() {
 	// agr[6] = output file (creates file with name "output file" from 
 	//	file received from server program
 	
-	fmt.Printf("Usage: ./client <server name> <server port> <clientpwd1>" +
-		"<clientpwd2> <clientpwd3> <output file>\n")
+	fmt.Printf("Usage: ./client <server name> <server port> <clientpwd1> <clientpwd2> <clientpwd3> <output file>\n")
 }
 
 func checkError(err error) {
@@ -163,7 +162,6 @@ func checkDigest(packet []byte) {
 	// This is 0 because digest starts offset at Byte 7
 	if int(totalPayloadLength) != len(serverDigest) {
 		fmt.Println("ABORT")
-		return
 	}
 
 	data, err := ioutil.ReadFile(outputFile)
