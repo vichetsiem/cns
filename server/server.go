@@ -95,21 +95,6 @@ func checkError(err error) {
 	}
 }
 
-func terminate(conn net.PacketConn, serverAddr net.Addr) {
-	// Get digest and send TERMINATE packet
-	data, err := ioutil.ReadFile(inputFile)
-	checkError(err)
-	digest := sha1.Sum(data)
-
-	packetLength := HeaderLength + PayloadLength + sha1.Size
-	packet := make([]byte, packetLength)
-	binary.LittleEndian.PutUint16(packet[0:], TERMINATE)
-	binary.LittleEndian.PutUint32(packet[2:], uint32(len(digest)))
-	copy(packet[6:], digest[0:])
-	conn.WriteTo(packet, serverAddr)
-	fmt.Println("OK")
-}
-
 func sendFile(conn net.PacketConn, serverAddr net.Addr) {
 	// Read file from present directory and send
 	// NOTE: file must be in working directory or this will fail
@@ -138,13 +123,28 @@ func sendFile(conn net.PacketConn, serverAddr net.Addr) {
 	}
 }
 
-func handlePacketConnection(conn net.PacketConn) {
+func terminate(conn net.PacketConn, serverAddr net.Addr) {
+	// Get digest and send TERMINATE packet
+	data, err := ioutil.ReadFile(inputFile)
+	checkError(err)
+	
+	// Perform hash on data
+	digest := sha1.Sum(data)
 
+	packetLength := HeaderLength + PayloadLength + sha1.Size
+	packet := make([]byte, packetLength)
+	binary.LittleEndian.PutUint16(packet[0:], TERMINATE)
+	binary.LittleEndian.PutUint32(packet[2:], uint32(len(digest)))
+	copy(packet[6:], digest[0:])
+	conn.WriteTo(packet, serverAddr)
+	fmt.Println("OK")
+}
+
+func handlePacketConnection(conn net.PacketConn) {
 	request := 0
 	// Allocate buffer as byte array, where 
 	// (HeaderLength==2) +(PayloadLength==4) +(PacketidLength==4)+ (Data <= 1000) ==1010
 	bufferObject := make([]byte, 1010)
-
 	for {
 		count, serverAddress, err := conn.ReadFrom(bufferObject)
 		if err != nil {
@@ -169,12 +169,11 @@ func handlePacketConnection(conn net.PacketConn) {
 				return
 			}
 			if request < 3 {
+				// Allow no more than three password tries, else bomb out
 				conn.WriteTo(PASS_REQ_Array, serverAddress)
 				request++
 			} else {
 				conn.WriteTo(REJECT_Array, serverAddress)
-				fmt.Println("ABORT")
-				return
 			}
 		default:
 			fmt.Println("ABORT")
